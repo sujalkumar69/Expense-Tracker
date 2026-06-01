@@ -183,6 +183,7 @@ async function createGroupExpense(req,res,next){
             amount,
             description
         }=req.body;
+        const paid_by=req.user.user_id;
 
         connection=
         await connectDB();
