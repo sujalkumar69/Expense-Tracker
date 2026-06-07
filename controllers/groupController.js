@@ -186,6 +186,7 @@ async function createGroupExpense(req,res,next){
 
         connection=
         await connectDB();
+        
 
 
 
@@ -299,12 +300,18 @@ async function getGroupExpenses(req,res,next){
 
         connection =
         await connectDB();
+        const memberCheck = await connection.execute(
+            `SELECT 1 FROM GROUP_MEMBERS 
+             WHERE GRPID=:1 AND USER_ID=:2`,
+            [groupId, req.user.user_id],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
 
-
-
-        const result =
-        await connection.execute(
-
+        if (memberCheck.rows.length === 0) {
+            return res.status(403).json({ 
+                message: "Access denied. You are not a member of this group" });
+        }
+        const result =await connection.execute(
         `
         SELECT
         GROUP_EXPENSE_ID,
@@ -319,24 +326,17 @@ async function getGroupExpenses(req,res,next){
 
         ORDER BY GROUP_EXPENSE_ID
         `,
-
         [groupId],
-
         {
             outFormat:
             oracledb.OUT_FORMAT_OBJECT
         }
-
         );
-
-
-
         return res.status(200).json(
 
             result.rows
 
         );
-
     }catch(error){
 
         next(error);
@@ -362,6 +362,17 @@ async function getGroupMembers(req,res,next){
 
         connection =
         await connectDB();
+        const memberCheck = await connection.execute(
+            `SELECT 1 FROM GROUP_MEMBERS 
+             WHERE GRPID=:1 AND USER_ID=:2`,
+            [groupId, req.user.user_id],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        if (memberCheck.rows.length === 0) {
+            return res.status(403).json({ 
+                message: "Access denied. You are not a member of this group" });
+        }
 
         const result =
         await connection.execute(
@@ -418,6 +429,17 @@ async function settleGroup(req,res,next){
 
         connection =
         await connectDB();
+        const memberCheck = await connection.execute(
+            `SELECT 1 FROM GROUP_MEMBERS 
+             WHERE GRPID=:1 AND USER_ID=:2`,
+            [groupId, req.user.user_id],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        if (memberCheck.rows.length === 0) {
+            return res.status(403).json({ 
+                message: "Access denied. You are not a member of this group" });
+        }
 
 
 
