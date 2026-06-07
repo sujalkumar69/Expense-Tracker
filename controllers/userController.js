@@ -1,3 +1,4 @@
+const blacklistedTokens = new Set();
 const  bcrypt=require("bcryptjs");
 const jwt=require("jsonwebtoken");
 const oracledb =require("oracledb")
@@ -169,10 +170,87 @@ async function refreshAccessToken(req, res, next) {
         return res.status(403).json({ message: "Invalid or expired refresh token" });
     }
 }
+async function getUserProfile(req, res, next) {
+    let connection;
+    try {
+        const user_id = req.user.user_id;
+
+        connection = await connectDB();
+
+        const result = await connection.execute(
+            `SELECT USER_ID, USERNAME, EMAIL, UPI_ID 
+             FROM USERS 
+             WHERE USER_ID=:1`,
+            [user_id],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        return res.status(200).json({ user: result.rows[0] });
+
+    } catch (error) {
+        next(error);
+    } finally {
+        if (connection) await connection.close();
+    }
+}
+async function updateUserProfile(req, res, next) {
+    let connection;
+    try {
+        const user_id = req.user.user_id;
+        const { username, upi_id } = req.body;
+
+        if (!username || username.length < 2 || username.length > 50) {
+            return res.status(400).json({ message: "Name must be 2 to 50 characters" });
+        }
+
+        connection = await connectDB();
+
+        await connection.execute(
+            `UPDATE USERS 
+             SET USERNAME=:1, UPI_ID=:2 
+             WHERE USER_ID=:3`,
+            [username, upi_id, user_id],
+            { autoCommit: true }
+        );
+
+        return res.status(200).json({ message: "Profile updated successfully" });
+
+    } catch (error) {
+        next(error);
+    } finally {
+        if (connection) await connection.close();
+    }
+}
+async function logoutUser(req, res, next) {
+    try {
+        const authHeader = req.headers["authorization"];
+
+        if (!authHeader) {
+            return res.status(401).json({ message: "No token provided" });
+        }
+
+        const token = authHeader.split(" ")[1];
+        blacklistedTokens.add(token);
+
+        return res.status(200).json({ message: "Logged out successfully" });
+
+    } catch (error) {
+        next(error);
+    }
+}
+
 
 
 module.exports = {
     registerUser,
     loginUser,
-    refreshAccessToken
+    refreshAccessToken,
+    getUserProfile,
+    updateUserProfile,
+    logoutUser,
+    blacklistedTokens
 };
