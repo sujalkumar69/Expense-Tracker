@@ -179,7 +179,6 @@ async function createGroupExpense(req,res,next){
 
         const{
             group_id,
-            paid_by,
             amount,
             description
         }=req.body;

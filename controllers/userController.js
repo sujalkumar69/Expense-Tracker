@@ -3,13 +3,26 @@ const jwt=require("jsonwebtoken");
 const {connectDB} = require("../config/db.js");
 
 
-async function registerUser(req, res) {
+async function registerUser(req, res,next) {
 
     let connection;
 
     try {
 
-        const { username, email, hashedPassword } = req.body;
+        const { username, email, password } = req.body;
+        if (!username || username.length < 2 || username.length > 50) {
+            return res.status(400).json({ message: "Name must be 2 to 50 characters" });
+        }
+        if (!email || email.length > 100) {
+            return res.status(400).json({ message: "Invalid email" });
+        }
+        if (!password || password.length < 6 || password.length > 50) {
+            return res.status(400).json({ message: "Password must be 6 to 50 characters" });
+        }
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({ message: "Invalid email format" });
+        }
         const hashedPassword = await bcrypt.hash(password,10);
 
         connection = await connectDB();
