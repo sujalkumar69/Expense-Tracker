@@ -11,7 +11,7 @@ async function registerUser(req, res,next) {
 
     try {
 
-        const { username, email, password } = req.body;
+        const { username, email, password, upi_id } = req.body;
         if (!username || username.length < 2 || username.length > 50) {
             return res.status(400).json({ message: "Name must be 2 to 50 characters" });
         }
@@ -31,9 +31,9 @@ async function registerUser(req, res,next) {
 
         const sql = `
             INSERT INTO USERS
-            (USERNAME, EMAIL, USER_PASSWORD)
+            (USERNAME, EMAIL, USER_PASSWORD,UPI_ID)
             VALUES
-            (:username, :email, :hashedPassword)
+            (:username, :email, :hashedPassword, :upi_id)
         `;
 
         await connection.execute(
@@ -41,7 +41,8 @@ async function registerUser(req, res,next) {
             {
                 username,
                 email,
-                hashedPassword
+                hashedPassword,
+                upi_id
             },
             {
                 autoCommit: true
