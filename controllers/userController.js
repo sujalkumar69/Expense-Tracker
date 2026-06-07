@@ -1,6 +1,8 @@
 const  bcrypt=require("bcryptjs");
 const jwt=require("jsonwebtoken");
+const oracledb =require("oracledb")
 const {connectDB} = require("../config/db.js");
+
 
 
 async function registerUser(req, res,next) {
@@ -31,7 +33,7 @@ async function registerUser(req, res,next) {
             INSERT INTO USERS
             (USERNAME, EMAIL, USER_PASSWORD)
             VALUES
-            (:username, :email, :password)
+            (:username, :email, :hashedPassword)
         `;
 
         await connection.execute(
@@ -39,7 +41,7 @@ async function registerUser(req, res,next) {
             {
                 username,
                 email,
-                password
+                hashedPassword
             },
             {
                 autoCommit: true
