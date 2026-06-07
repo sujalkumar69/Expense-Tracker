@@ -452,7 +452,7 @@ async function settleGroup(req,res,next){
         SELECT USER_ID
         FROM GROUP_MEMBERS
 
-        WHERE GRP_ID=:1
+        WHERE GRPID=:1
         `,
 
         [groupId],
@@ -478,7 +478,7 @@ async function settleGroup(req,res,next){
 
         FROM GROUP_EXPENSES
 
-        WHERE GRP_ID=:1
+        WHERE GRPID=:1
         `,
 
         [groupId],
