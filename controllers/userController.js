@@ -108,16 +108,25 @@ async function loginUser(req, res) {
         }
 
         // GENERATE token
-        const token = jwt.sign(
-            { user_id: user.USER_ID, email: user.EMAIL },
-            process.env.JWT_SECRET,
-            { expiresIn: "1d" }
-        );
+        // ACCESS TOKEN — expires in 15 minutes
+    const accessToken = jwt.sign(
+        { user_id: user.USER_ID, email: user.EMAIL },
+        process.env.JWT_SECRET,
+        { expiresIn: "15m" }
+    );
 
-        return res.status(200).json({
-            message: "Login successful",
-            token
-        });
+// REFRESH TOKEN — expires in 7 days
+    const refreshToken = jwt.sign(
+        { user_id: user.USER_ID, email: user.EMAIL },
+        process.env.REFRESH_SECRET,
+        { expiresIn: "7d" }
+    );
+
+    return res.status(200).json({
+        message: "Login successful",
+        accessToken,
+        refreshToken
+    });
 
     } catch (error) {
 
@@ -133,8 +142,34 @@ async function loginUser(req, res) {
     }
 } 
 
+async function refreshAccessToken(req, res, next) {
+    try {
+        const { refreshToken } = req.body;
+
+        if (!refreshToken) {
+            return res.status(401).json({ message: "Refresh token required" });
+        }
+
+        const decoded = jwt.verify(refreshToken, process.env.REFRESH_SECRET);
+
+        const newAccessToken = jwt.sign(
+            { user_id: decoded.user_id, email: decoded.email },
+            process.env.JWT_SECRET,
+            { expiresIn: "15m" }
+        );
+
+        return res.status(200).json({
+            accessToken: newAccessToken
+        });
+
+    } catch (error) {
+        return res.status(403).json({ message: "Invalid or expired refresh token" });
+    }
+}
+
 
 module.exports = {
     registerUser,
-    loginUser
+    loginUser,
+    refreshAccessToken
 };

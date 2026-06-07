@@ -3,9 +3,12 @@ const router = express.Router();
 
 const{
     registerUser,
-    loginUser
+    loginUser,
+    refreshAccessToken
 }=require("../controllers/userController.js");
 
 router.post("/register",registerUser);
-router.post("/login",loginUser)
+router.post("/login",loginUser);
+router.post("/refresh-token", refreshAccessToken);
+
 module.exports =router;
