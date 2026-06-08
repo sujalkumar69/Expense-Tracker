@@ -300,15 +300,16 @@ async function getGroupExpenses(req,res,next){
     let connection;
 
     try{
-
-        const groupId =
-        req.params.groupId;
+        const groupId =req.params.groupId;
+        const page =parseInt(req.query.page) || 1;
+        const limit =parseInt(req.query.limit) ||10;
+        const offset =(page -1) * limit;
 
         connection =
         await connectDB();
         const memberCheck = await connection.execute(
-            `SELECT 1 FROM GROUP_MEMBERS 
-             WHERE GRPID=:1 AND USER_ID=:2`,
+            `SELECT * FROM GROUP_EXPENSES WHERE GRP_ID=:1
+            ORDER BY GROUP_EXPENSE_ID OFFSET :2 ROWS FETCH NEXT :3 ROWS ONLY`,
             [groupId, req.user.user_id],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
@@ -338,11 +339,11 @@ async function getGroupExpenses(req,res,next){
             oracledb.OUT_FORMAT_OBJECT
         }
         );
-        return res.status(200).json(
+        return res.status(200).json({
 
-            result.rows
+            page,limit,expenses:result.rows
 
-        );
+    });
     }catch(error){
 
         next(error);
@@ -370,7 +371,7 @@ async function getGroupMembers(req,res,next){
         await connectDB();
         const memberCheck = await connection.execute(
             `SELECT 1 FROM GROUP_MEMBERS 
-             WHERE GRPID=:1 AND USER_ID=:2`,
+             WHERE GRP_ID=:1 AND USER_ID=:2`,
             [groupId, req.user.user_id],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
@@ -437,7 +438,7 @@ async function settleGroup(req,res,next){
         await connectDB();
         const memberCheck = await connection.execute(
             `SELECT 1 FROM GROUP_MEMBERS 
-             WHERE GRPID=:1 AND USER_ID=:2`,
+             WHERE GRP_ID=:1 AND USER_ID=:2`,
             [groupId, req.user.user_id],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
@@ -458,7 +459,7 @@ async function settleGroup(req,res,next){
         SELECT USER_ID
         FROM GROUP_MEMBERS
 
-        WHERE GRPID=:1
+        WHERE GRP_ID=:1
         `,
 
         [groupId],
@@ -484,7 +485,7 @@ async function settleGroup(req,res,next){
 
         FROM GROUP_EXPENSES
 
-        WHERE GRPID=:1
+        WHERE GRP_ID=:1
         `,
 
         [groupId],
@@ -609,7 +610,7 @@ async function joinGroupByCode(req, res, next) {
 
         // FIND GROUP BY INVITE CODE
         const groupResult = await connection.execute(
-            `SELECT GRPID FROM GROUPS_TABLE 
+            `SELECT GRP_ID FROM GROUPS_TABLE 
              WHERE INVITE_CODE=:1`,
             [invite_code],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
@@ -619,12 +620,12 @@ async function joinGroupByCode(req, res, next) {
             return res.status(404).json({ message: "Invalid invite code" });
         }
 
-        const group_id = groupResult.rows[0].GRPID;
+        const group_id = groupResult.rows[0].GRP_ID;
 
         // CHECK IF ALREADY A MEMBER
         const dupCheck = await connection.execute(
             `SELECT 1 FROM GROUP_MEMBERS 
-             WHERE GRPID=:1 AND USER_ID=:2`,
+             WHERE GRP_ID=:1 AND USER_ID=:2`,
             [group_id, user_id],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
@@ -635,7 +636,7 @@ async function joinGroupByCode(req, res, next) {
 
         // ADD USER TO GROUP
         await connection.execute(
-            `INSERT INTO GROUP_MEMBERS (GRPID, USER_ID)
+            `INSERT INTO GROUP_MEMBERS (GRP_ID, USER_ID)
              VALUES (:1, :2)`,
             [group_id, user_id],
             { autoCommit: true }
@@ -659,7 +660,7 @@ async function markMemberSettled(req, res, next) {
 
         // CHECK IF REQUESTER IS ADMIN
         const adminCheck = await connection.execute(
-            `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRPID=:1`,
+            `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRP_ID=:1`,
             [groupId],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
@@ -676,7 +677,7 @@ async function markMemberSettled(req, res, next) {
         await connection.execute(
             `UPDATE GROUP_MEMBERS 
              SET SETTLED=1 
-             WHERE GRPID=:1 AND USER_ID=:2`,
+             WHERE GRP_ID=:1 AND USER_ID=:2`,
             [groupId, userId],
             { autoCommit: true }
         );
@@ -699,7 +700,7 @@ async function leaveGroup(req, res, next) {
 
         // CHECK IF ADMIN — admin cannot leave
         const adminCheck = await connection.execute(
-            `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRPID=:1`,
+            `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRP_ID=:1`,
             [groupId],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
@@ -711,7 +712,7 @@ async function leaveGroup(req, res, next) {
         // REMOVE FROM GROUP
         await connection.execute(
             `DELETE FROM GROUP_MEMBERS 
-             WHERE GRPID=:1 AND USER_ID=:2`,
+             WHERE GRP_ID=:1 AND USER_ID=:2`,
             [groupId, user_id],
             { autoCommit: true }
         );
@@ -734,7 +735,7 @@ async function deleteGroup(req, res, next) {
 
         // CHECK IF ADMIN
         const adminCheck = await connection.execute(
-            `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRPID=:1`,
+            `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRP_ID=:1`,
             [groupId],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
@@ -749,18 +750,18 @@ async function deleteGroup(req, res, next) {
 
         // DELETE CHILD TABLES FIRST
         await connection.execute(
-            `DELETE FROM GROUP_EXPENSES WHERE GRPID=:1`,
+            `DELETE FROM GROUP_EXPENSES WHERE GRP_ID=:1`,
             [groupId]
         );
 
         await connection.execute(
-            `DELETE FROM GROUP_MEMBERS WHERE GRPID=:1`,
+            `DELETE FROM GROUP_MEMBERS WHERE GRP_ID=:1`,
             [groupId]
         );
 
         // DELETE GROUP
         await connection.execute(
-            `DELETE FROM GROUPS_TABLE WHERE GRPID=:1`,
+            `DELETE FROM GROUPS_TABLE WHERE GRP_ID=:1`,
             [groupId],
             { autoCommit: true }
         );
@@ -783,7 +784,7 @@ async function generateQR(req, res, next) {
 
         // CHECK IF REQUESTER IS ADMIN
         const adminCheck = await connection.execute(
-            `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRPID=:1`,
+            `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRP_ID=:1`,
             [groupId],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
@@ -812,14 +813,14 @@ async function generateQR(req, res, next) {
 
         // GET TOTAL GROUP EXPENSE
         const totalResult = await connection.execute(
-            `SELECT SUM(AMOUNT) AS TOTAL FROM GROUP_EXPENSES WHERE GRPID=:1`,
+            `SELECT SUM(AMOUNT) AS TOTAL FROM GROUP_EXPENSES WHERE GRP_ID=:1`,
             [groupId],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
 
         // GET MEMBER COUNT
         const memberResult = await connection.execute(
-            `SELECT COUNT(*) AS TOTAL_MEMBERS FROM GROUP_MEMBERS WHERE GRPID=:1`,
+            `SELECT COUNT(*) AS TOTAL_MEMBERS FROM GROUP_MEMBERS WHERE GRP_ID=:1`,
             [groupId],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
@@ -827,7 +828,7 @@ async function generateQR(req, res, next) {
         // GET HOW MUCH THIS USER PAID
         const paidResult = await connection.execute(
             `SELECT SUM(AMOUNT) AS PAID FROM GROUP_EXPENSES 
-             WHERE GRPID=:1 AND PAID_BY=:2`,
+             WHERE GRP_ID=:1 AND PAID_BY=:2`,
             [groupId, userId],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
