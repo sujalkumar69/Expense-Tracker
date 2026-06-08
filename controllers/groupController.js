@@ -649,6 +649,130 @@ async function joinGroupByCode(req, res, next) {
         if (connection) await connection.close();
     }
 }
+async function markMemberSettled(req, res, next) {
+    let connection;
+    try {
+        const { groupId, userId } = req.params;
+        const admin_id = req.user.user_id;
+
+        connection = await connectDB();
+
+        // CHECK IF REQUESTER IS ADMIN
+        const adminCheck = await connection.execute(
+            `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRPID=:1`,
+            [groupId],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        if (adminCheck.rows.length === 0) {
+            return res.status(404).json({ message: "Group not found" });
+        }
+
+        if (adminCheck.rows[0].CREATED_BY !== admin_id) {
+            return res.status(403).json({ message: "Only admin can mark members as settled" });
+        }
+
+        // MARK AS SETTLED
+        await connection.execute(
+            `UPDATE GROUP_MEMBERS 
+             SET SETTLED=1 
+             WHERE GRPID=:1 AND USER_ID=:2`,
+            [groupId, userId],
+            { autoCommit: true }
+        );
+
+        return res.status(200).json({ message: "Member marked as settled" });
+
+    } catch (error) {
+        next(error);
+    } finally {
+        if (connection) await connection.close();
+    }
+}
+async function leaveGroup(req, res, next) {
+    let connection;
+    try {
+        const { groupId } = req.params;
+        const user_id = req.user.user_id;
+
+        connection = await connectDB();
+
+        // CHECK IF ADMIN — admin cannot leave
+        const adminCheck = await connection.execute(
+            `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRPID=:1`,
+            [groupId],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        if (adminCheck.rows[0].CREATED_BY === user_id) {
+            return res.status(403).json({ message: "Admin cannot leave. Delete the group instead" });
+        }
+
+        // REMOVE FROM GROUP
+        await connection.execute(
+            `DELETE FROM GROUP_MEMBERS 
+             WHERE GRPID=:1 AND USER_ID=:2`,
+            [groupId, user_id],
+            { autoCommit: true }
+        );
+
+        return res.status(200).json({ message: "Left group successfully" });
+
+    } catch (error) {
+        next(error);
+    } finally {
+        if (connection) await connection.close();
+    }
+}
+async function deleteGroup(req, res, next) {
+    let connection;
+    try {
+        const { groupId } = req.params;
+        const admin_id = req.user.user_id;
+
+        connection = await connectDB();
+
+        // CHECK IF ADMIN
+        const adminCheck = await connection.execute(
+            `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRPID=:1`,
+            [groupId],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        if (adminCheck.rows.length === 0) {
+            return res.status(404).json({ message: "Group not found" });
+        }
+
+        if (adminCheck.rows[0].CREATED_BY !== admin_id) {
+            return res.status(403).json({ message: "Only admin can delete the group" });
+        }
+
+        // DELETE CHILD TABLES FIRST
+        await connection.execute(
+            `DELETE FROM GROUP_EXPENSES WHERE GRPID=:1`,
+            [groupId]
+        );
+
+        await connection.execute(
+            `DELETE FROM GROUP_MEMBERS WHERE GRPID=:1`,
+            [groupId]
+        );
+
+        // DELETE GROUP
+        await connection.execute(
+            `DELETE FROM GROUPS_TABLE WHERE GRPID=:1`,
+            [groupId],
+            { autoCommit: true }
+        );
+
+        return res.status(200).json({ message: "Group deleted successfully" });
+
+    } catch (error) {
+        next(error);
+    } finally {
+        if (connection) await connection.close();
+    }
+}
 module.exports={
 
     createGroup,
@@ -657,6 +781,9 @@ module.exports={
     getGroupExpenses,
     getGroupMembers,
     settleGroup,
-    joinGroupByCode
+    joinGroupByCode,
+    markMemberSettled,
+    leaveGroup,
+    deleteGroup
 
 };
