@@ -1,5 +1,6 @@
 const {connectDB} =require("../config/db.js");
 const oracledb =require("oracledb");
+const crypto =require("crypto");
 async function createGroup(req,res,next){
 
     let connection;
@@ -11,6 +12,8 @@ async function createGroup(req,res,next){
             created_by
         }=req.body;
 
+        const inviteCode = crypto.randomBytes(3).toString("hex").toUpperCase();
+
         connection=
         await connectDB();
 
@@ -20,7 +23,8 @@ async function createGroup(req,res,next){
         INSERT INTO GROUPS_TABLE
         (
             GROUP_NAME,
-            CREATED_BY
+            CREATED_BY,
+            INVITE_CODE
         )
 
         VALUES
@@ -32,7 +36,8 @@ async function createGroup(req,res,next){
 
         [
             group_name,
-            created_by
+            created_by,
+            inviteCode
         ],
 
         {
@@ -44,7 +49,8 @@ async function createGroup(req,res,next){
         return res.status(201).json({
 
             message:
-            "Group created successfully"
+            "Group created successfully",
+            invite_code: inviteCode
 
         });
 
@@ -589,6 +595,60 @@ async function settleGroup(req,res,next){
     }
 
 }
+async function joinGroupByCode(req, res, next) {
+    let connection;
+    try {
+        const { invite_code } = req.body;
+        const user_id = req.user.user_id;
+
+        if (!invite_code) {
+            return res.status(400).json({ message: "Invite code required" });
+        }
+
+        connection = await connectDB();
+
+        // FIND GROUP BY INVITE CODE
+        const groupResult = await connection.execute(
+            `SELECT GRPID FROM GROUPS_TABLE 
+             WHERE INVITE_CODE=:1`,
+            [invite_code],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        if (groupResult.rows.length === 0) {
+            return res.status(404).json({ message: "Invalid invite code" });
+        }
+
+        const group_id = groupResult.rows[0].GRPID;
+
+        // CHECK IF ALREADY A MEMBER
+        const dupCheck = await connection.execute(
+            `SELECT 1 FROM GROUP_MEMBERS 
+             WHERE GRPID=:1 AND USER_ID=:2`,
+            [group_id, user_id],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        if (dupCheck.rows.length > 0) {
+            return res.status(409).json({ message: "Already a member of this group" });
+        }
+
+        // ADD USER TO GROUP
+        await connection.execute(
+            `INSERT INTO GROUP_MEMBERS (GRPID, USER_ID)
+             VALUES (:1, :2)`,
+            [group_id, user_id],
+            { autoCommit: true }
+        );
+
+        return res.status(201).json({ message: "Joined group successfully" });
+
+    } catch (error) {
+        next(error);
+    } finally {
+        if (connection) await connection.close();
+    }
+}
 module.exports={
 
     createGroup,
@@ -596,6 +656,7 @@ module.exports={
     createGroupExpense,
     getGroupExpenses,
     getGroupMembers,
-    settleGroup
+    settleGroup,
+    joinGroupByCode
 
 };

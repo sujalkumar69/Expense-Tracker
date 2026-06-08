@@ -5,7 +5,7 @@ const router =
 express.Router();
 const{
 createGroup,
-addUserToGroup,createGroupExpense,getGroupExpenses,getGroupMembers,settleGroup
+addUserToGroup,createGroupExpense,getGroupExpenses,getGroupMembers,settleGroup,joinGroupByCode
 }=require(
 "../controllers/groupController"
 );
@@ -27,5 +27,6 @@ router.get("/expense/:groupId",verifyToken,getGroupExpenses);
 router.get("/members/:groupId",verifyToken,getGroupMembers);
 
 router.get("/settle/:groupId",verifyToken,settleGroup);
+router.post("/join", verifyToken,joinGroupByCode);
 module.exports=
 router;
