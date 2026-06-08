@@ -30,7 +30,8 @@ async function createGroup(req,res,next){
         VALUES
         (
             :1,
-            :2
+            :2,
+            :3
         )
         `,
 
@@ -310,7 +311,7 @@ async function getGroupExpenses(req,res,next){
         const memberCheck = await connection.execute(
             `SELECT * FROM GROUP_EXPENSES WHERE GRP_ID=:1
             ORDER BY GROUP_EXPENSE_ID OFFSET :2 ROWS FETCH NEXT :3 ROWS ONLY`,
-            [groupId, req.user.user_id],
+            [groupId, offset,limit],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
 
