@@ -1,5 +1,6 @@
 const {connectDB} =require("../config/db.js");
 const oracledb =require("oracledb");
+const { link } = require("../routes/userRoutes.js");
 async function createExpense(req,res){
     let connection;
 
@@ -63,12 +64,14 @@ async function getExpenses(req,res){
     let connection;
 
     try{
+        const page =parseInt(req.query.page) || 1;
+        const limit =parseInt(req.query.limit) ||10;
+        const offset =(page -1) * limit;
         connection =await connectDB();
 
         const result=
         await connection.execute(
-            `SELECT EXPENSE_ID,USER_ID,AMOUNT,CATEGORY,DESCRIPTION,EXPENSE_DATE
-            FROM EXPENSES ORDER BY EXPENSE_ID`,[],{
+            `SELECT * FROM EXPENSES ORDER BY EXPENSE_ID OFFSET :1 ROWS FETCH NEXT :2 ROWS ONLY`,[offset,limit],{
                 outFormat:oracledb.OUT_FORMAT_OBJECT
             }
         );
@@ -76,14 +79,12 @@ async function getExpenses(req,res){
         const expenses=result.rows;
 
         res.status(200).json(
-            result.rows
+            page,
+            limit,
+            expenses
         );
     }catch (error){
-        console.error(error);
-
-        res.status(500).json({
-            error:error.message
-        });
+        next(error);
     }finally{
         if(connection){
             await connection.close();
