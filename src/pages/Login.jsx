@@ -81,8 +81,8 @@ export default function Login() {
                     padding: "40px",
                     borderRadius: "24px",
                     background: "rgba(255,255,255,0.07)",
-                    border: "1px solid rgba(255,215,0,0.25)",
-                    boxShadow: "0 0 60px rgba(255,107,53,0.1), inset 0 0 60px rgba(255,255,255,0.02)",
+                    border: "1px solid rgba(0,255,136,0.2)",
+                    boxShadow: "0 0 60px rgba(0,255,136,0.05), inset 0 0 60px rgba(255,255,255,0.02)",
                     backdropFilter: "blur(20px)",
                     WebkitBackdropFilter: "blur(20px)",
                     zIndex: 10,
@@ -100,7 +100,7 @@ export default function Login() {
                     <h1 style={{
                         fontSize: "28px",
                         fontWeight: 800,
-                        background: "linear-gradient(90deg, #ffd700, #ff6b35)",
+                        background: "linear-gradient(90deg, #ffd700, #00ff88)",
                         WebkitBackgroundClip: "text",
                         WebkitTextFillColor: "transparent",
                         margin: 0
@@ -126,7 +126,7 @@ export default function Login() {
                             border: "1px solid rgba(255,50,50,0.3)",
                             borderRadius: "12px",
                             padding: "12px 16px",
-                            color: "#ff6b6b",
+                            color: "#00ff88",
                             fontSize: "14px",
                             marginBottom: "20px"
                         }}
@@ -210,8 +210,8 @@ export default function Login() {
                         borderRadius: "12px",
                         border: "none",
                         background: loading
-                            ? "rgba(255,107,53,0.4)"
-                            : "linear-gradient(90deg, #ffd700, #ff6b35)",
+                            ? "rgba(0,255,136,0.4)"
+                            : "linear-gradient(90deg, #ffd700, #00ff88)",
                         color: "#000",
                         fontSize: "16px",
                         fontWeight: 700,
@@ -230,7 +230,7 @@ export default function Login() {
                 }}>
                     Don't have an account?{" "}
                     <Link to="/register" style={{
-                        color: "#ff6b35",
+                        color: "#00ff88",
                         textDecoration: "none",
                         fontWeight: 600
                     }}>
