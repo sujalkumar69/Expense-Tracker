@@ -1,602 +1,314 @@
-const {connectDB} =require("../config/db.js");
-const oracledb =require("oracledb");
-const crypto =require("crypto");
-async function createGroup(req,res,next){
+const { connectDB } = require("../config/db.js");
+const oracledb = require("oracledb");
+const crypto = require("crypto");
 
+async function createGroup(req, res, next) {
     let connection;
+    try {
+        const { group_name } = req.body;
+        const created_by = req.user.user_id;
 
-    try{
-
-        const{
-            group_name,
-            created_by
-        }=req.body;
+        if (!group_name || group_name.trim().length === 0) {
+            return res.status(400).json({ message: "Group name is required" });
+        }
 
         const inviteCode = crypto.randomBytes(3).toString("hex").toUpperCase();
-
-        connection=
-        await connectDB();
+        connection = await connectDB();
 
         await connection.execute(
-
-        `
-        INSERT INTO GROUPS_TABLE
-        (
-            GROUP_NAME,
-            CREATED_BY,
-            INVITE_CODE
-        )
-
-        VALUES
-        (
-            :1,
-            :2,
-            :3
-        )
-        `,
-
-        [
-            group_name,
-            created_by,
-            inviteCode
-        ],
-
-        {
-            autoCommit:true
-        }
-
+            `INSERT INTO GROUPS_TABLE (GROUP_NAME, CREATED_BY, INVITE_CODE)
+             VALUES (:1, :2, :3)`,
+            [group_name.trim(), created_by, inviteCode],
+            { autoCommit: false }
         );
 
-        return res.status(201).json({
+        const grpResult = await connection.execute(
+            `SELECT GRP_ID FROM GROUPS_TABLE WHERE INVITE_CODE = :1`,
+            [inviteCode],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
 
-            message:
-            "Group created successfully",
-            invite_code: inviteCode
-
-        });
-
-    }catch(error){
-        next(error);
-
-
-        
-
-    }finally{
-
-        if(connection){
-
-            await connection.close();
-
+        if (grpResult.rows.length > 0) {
+            const grp_id = grpResult.rows[0].GRP_ID;
+            await connection.execute(
+                `INSERT INTO GROUP_MEMBERS (GRP_ID, USER_ID) VALUES (:1, :2)`,
+                [grp_id, created_by],
+                { autoCommit: true }
+            );
+        } else {
+            await connection.commit();
         }
 
+        return res.status(201).json({
+            message: "Group created successfully",
+            invite_code: inviteCode
+        });
+
+    } catch (error) {
+        next(error);
+    } finally {
+        if (connection) await connection.close();
     }
-
 }
-async function addUserToGroup(req, res,next) {
 
+async function getUserGroups(req, res, next) {
     let connection;
-
     try {
+        const user_id = req.user.user_id;
+        connection = await connectDB();
 
-        const {
-            group_id,
-            admin_id,
-            user_id
-        } = req.body;
+        const result = await connection.execute(
+            `SELECT g.GRP_ID, g.GROUP_NAME, g.CREATED_BY, g.INVITE_CODE,
+                    (SELECT COUNT(*) FROM GROUP_MEMBERS gm WHERE gm.GRP_ID = g.GRP_ID) AS MEMBER_COUNT
+             FROM GROUPS_TABLE g
+             JOIN GROUP_MEMBERS m ON g.GRP_ID = m.GRP_ID
+             WHERE m.USER_ID = :1
+             ORDER BY g.GRP_ID DESC`,
+            [user_id],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
 
-        // INPUT VALIDATION
-        if (!group_id || !admin_id || !user_id) {
-            return res.status(400).json({
-                message: "group_id, admin_id, user_id are required"
-            });
+        return res.status(200).json(result.rows);
+    } catch (error) {
+        next(error);
+    } finally {
+        if (connection) await connection.close();
+    }
+}
+
+async function addUserToGroup(req, res, next) {
+    let connection;
+    try {
+        const { group_id, user_id } = req.body;
+        const admin_id = req.user.user_id;
+
+        if (!group_id || !user_id) {
+            return res.status(400).json({ message: "group_id and user_id are required" });
         }
 
         connection = await connectDB();
 
-        // CHECK GROUP EXISTS AND GET ADMIN
         const result = await connection.execute(
-            `
-            SELECT CREATED_BY
-            FROM GROUPS_TABLE
-            WHERE GRP_ID=:1
-            `,
+            `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRP_ID=:1`,
             [group_id],
-            {
-                outFormat: oracledb.OUT_FORMAT_OBJECT
-            }
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
 
         if (result.rows.length === 0) {
-            return res.status(404).json({
-                message: "Group not found"
-            });
+            return res.status(404).json({ message: "Group not found" });
         }
 
-        const actualAdmin = result.rows[0].CREATED_BY;
-
-        // ADMIN CHECK
-        if (actualAdmin !== admin_id) {
-            return res.status(403).json({
-                message: "Only admin can add users"
-            });
+        if (result.rows[0].CREATED_BY !== admin_id) {
+            return res.status(403).json({ message: "Only admin can add users" });
         }
 
-        // DUPLICATE MEMBER CHECK
         const dupCheck = await connection.execute(
-            `
-            SELECT 1
-            FROM GROUP_MEMBERS
-            WHERE GRP_ID=:1
-            AND USER_ID=:2
-            `,
+            `SELECT 1 FROM GROUP_MEMBERS WHERE GRP_ID=:1 AND USER_ID=:2`,
             [group_id, user_id],
-            {
-                outFormat: oracledb.OUT_FORMAT_OBJECT
-            }
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
 
         if (dupCheck.rows.length > 0) {
-            return res.status(409).json({
-                message: "User is already a member of this group"
+            return res.status(409).json({ message: "User is already a member of this group" });
+        }
+
+        await connection.execute(
+            `INSERT INTO GROUP_MEMBERS (GRP_ID, USER_ID) VALUES (:1, :2)`,
+            [group_id, user_id],
+            { autoCommit: true }
+        );
+
+        return res.status(201).json({ message: "User added to group successfully" });
+
+    } catch (error) {
+        next(error);
+    } finally {
+        if (connection) await connection.close();
+    }
+}
+
+async function createGroupExpense(req, res, next) {
+    let connection;
+    try {
+        const { group_id, amount, description } = req.body;
+        const paid_by = req.user.user_id;
+
+        if (!group_id || !amount || amount <= 0) {
+            return res.status(400).json({ message: "Valid group_id and positive amount are required" });
+        }
+
+        connection = await connectDB();
+
+        const memberCheck = await connection.execute(
+            `SELECT 1 FROM GROUP_MEMBERS WHERE GRP_ID=:1 AND USER_ID=:2`,
+            [group_id, paid_by],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        if (memberCheck.rows.length === 0) {
+            return res.status(403).json({ message: "User is not part of this group" });
+        }
+
+        await connection.execute(
+            `INSERT INTO GROUP_EXPENSES (GRP_ID, PAID_BY, AMOUNT, DESCRIPTION)
+             VALUES (:1, :2, :3, :4)`,
+            [group_id, paid_by, parseFloat(amount), description || ""],
+            { autoCommit: true }
+        );
+
+        return res.status(201).json({ message: "Group expense added successfully" });
+
+    } catch (error) {
+        next(error);
+    } finally {
+        if (connection) await connection.close();
+    }
+}
+
+async function getGroupExpenses(req, res, next) {
+    let connection;
+    try {
+        const groupId = req.params.groupId;
+        const user_id = req.user.user_id;
+
+        connection = await connectDB();
+
+        const memberCheck = await connection.execute(
+            `SELECT 1 FROM GROUP_MEMBERS WHERE GRP_ID=:1 AND USER_ID=:2`,
+            [groupId, user_id],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        if (memberCheck.rows.length === 0) {
+            return res.status(403).json({ message: "Access denied. You are not a member of this group" });
+        }
+
+        const result = await connection.execute(
+            `SELECT e.GROUP_EXPENSE_ID, e.GRP_ID, e.PAID_BY, e.AMOUNT, e.DESCRIPTION, u.USERNAME AS PAID_BY_NAME
+             FROM GROUP_EXPENSES e
+             LEFT JOIN USERS u ON e.PAID_BY = u.USER_ID
+             WHERE e.GRP_ID=:1
+             ORDER BY e.GROUP_EXPENSE_ID DESC`,
+            [groupId],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        return res.status(200).json(result.rows);
+    } catch (error) {
+        next(error);
+    } finally {
+        if (connection) await connection.close();
+    }
+}
+
+async function getGroupMembers(req, res, next) {
+    let connection;
+    try {
+        const groupId = req.params.groupId;
+
+        connection = await connectDB();
+        const memberCheck = await connection.execute(
+            `SELECT 1 FROM GROUP_MEMBERS WHERE GRP_ID=:1 AND USER_ID=:2`,
+            [groupId, req.user.user_id],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        if (memberCheck.rows.length === 0) {
+            return res.status(403).json({ message: "Access denied. You are not a member of this group" });
+        }
+
+        const result = await connection.execute(
+            `SELECT m.GROUP_MEMBER_ID, m.GRP_ID, m.USER_ID, m.SETTLED, u.USERNAME, u.EMAIL, u.UPI_ID
+             FROM GROUP_MEMBERS m
+             JOIN USERS u ON m.USER_ID = u.USER_ID
+             WHERE m.GRP_ID=:1`,
+            [groupId],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        return res.status(200).json(result.rows);
+    } catch (error) {
+        next(error);
+    } finally {
+        if (connection) await connection.close();
+    }
+}
+
+async function settleGroup(req, res, next) {
+    let connection;
+    try {
+        const groupId = req.params.groupId;
+
+        connection = await connectDB();
+        const memberCheck = await connection.execute(
+            `SELECT 1 FROM GROUP_MEMBERS WHERE GRP_ID=:1 AND USER_ID=:2`,
+            [groupId, req.user.user_id],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        if (memberCheck.rows.length === 0) {
+            return res.status(403).json({ message: "Access denied. You are not a member of this group" });
+        }
+
+        const memberResult = await connection.execute(
+            `SELECT m.USER_ID, u.USERNAME, u.UPI_ID, m.SETTLED 
+             FROM GROUP_MEMBERS m 
+             JOIN USERS u ON m.USER_ID = u.USER_ID 
+             WHERE m.GRP_ID=:1`,
+            [groupId],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        const expenseResult = await connection.execute(
+            `SELECT PAID_BY, AMOUNT FROM GROUP_EXPENSES WHERE GRP_ID=:1`,
+            [groupId],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        const members = memberResult.rows;
+        const expenses = expenseResult.rows;
+        const totalMembers = members.length || 1;
+
+        let totalExpense = 0;
+        const paidMap = {};
+
+        for (const expense of expenses) {
+            totalExpense += expense.AMOUNT;
+            paidMap[expense.PAID_BY] = (paidMap[expense.PAID_BY] || 0) + expense.AMOUNT;
+        }
+
+        const perPerson = totalMembers > 0 ? totalExpense / totalMembers : 0;
+        const settlement = [];
+
+        for (const member of members) {
+            const userId = member.USER_ID;
+            const paid = paidMap[userId] || 0;
+            const balance = paid - perPerson;
+
+            settlement.push({
+                user_id: userId,
+                username: member.USERNAME,
+                upi_id: member.UPI_ID,
+                settled: member.SETTLED || 0,
+                paid: parseFloat(paid.toFixed(2)),
+                should_pay: parseFloat(perPerson.toFixed(2)),
+                balance: parseFloat(balance.toFixed(2))
             });
         }
 
-        // ADD USER
-        await connection.execute(
-            `
-            INSERT INTO GROUP_MEMBERS
-            (
-                GRP_ID,
-                USER_ID
-            )
-            VALUES
-            (
-                :1,
-                :2
-            )
-            `,
-            [group_id, user_id],
-            {
-                autoCommit: true
-            }
-        );
-
-        return res.status(201).json({
-            message: "User added to group successfully"
+        return res.status(200).json({
+            totalExpense: parseFloat(totalExpense.toFixed(2)),
+            perPerson: parseFloat(perPerson.toFixed(2)),
+            settlement
         });
 
     } catch (error) {
-
         next(error);
-
     } finally {
-
-        if (connection) {
-            await connection.close();
-        }
-
+        if (connection) await connection.close();
     }
 }
 
-async function createGroupExpense(req,res,next){
-
-    let connection;
-
-    try{
-
-        const{
-            group_id,
-            amount,
-            description
-        }=req.body;
-        const paid_by=req.user.user_id;
-
-        connection=
-        await connectDB();
-        
-
-
-
-        // CHECK MEMBER EXISTS
-
-        const memberCheck=
-        await connection.execute(
-
-        `
-        SELECT *
-        FROM GROUP_MEMBERS
-
-        WHERE GRP_ID=:1
-        AND USER_ID=:2
-        `,
-
-        [
-            group_id,
-            paid_by
-        ],
-
-        {
-            outFormat:
-            oracledb.OUT_FORMAT_OBJECT
-        }
-
-        );
-
-
-
-        if(memberCheck.rows.length===0){
-
-            return res.status(403).json({
-
-                message:
-                "User is not part of group"
-
-            });
-
-        }
-
-
-
-        // INSERT GROUP EXPENSE
-
-        await connection.execute(
-
-        `
-        INSERT INTO GROUP_EXPENSES
-        (
-            GRP_ID,
-            PAID_BY,
-            AMOUNT,
-            DESCRIPTION
-        )
-
-        VALUES
-        (
-            :1,
-            :2,
-            :3,
-            :4
-        )
-        `,
-
-        [
-            group_id,
-            paid_by,
-            amount,
-            description
-        ],
-
-        {
-            autoCommit:true
-        }
-
-        );
-
-
-
-        return res.status(201).json({
-
-            message:
-            "Group expense added"
-
-        });
-
-    }catch(error){
-
-        next(error);
-
-    }finally{
-
-        if(connection){
-
-            await connection.close();
-
-        }
-
-    }
-
-}
-async function getGroupExpenses(req,res,next){
-
-    let connection;
-
-    try{
-        const groupId =req.params.groupId;
-        const page =parseInt(req.query.page) || 1;
-        const limit =parseInt(req.query.limit) ||10;
-        const offset =(page -1) * limit;
-
-        connection =
-        await connectDB();
-        const memberCheck = await connection.execute(
-            `SELECT * FROM GROUP_EXPENSES WHERE GRP_ID=:1
-            ORDER BY GROUP_EXPENSE_ID OFFSET :2 ROWS FETCH NEXT :3 ROWS ONLY`,
-            [groupId, offset,limit],
-            { outFormat: oracledb.OUT_FORMAT_OBJECT }
-        );
-
-        if (memberCheck.rows.length === 0) {
-            return res.status(403).json({ 
-                message: "Access denied. You are not a member of this group" });
-        }
-        const result =await connection.execute(
-        `
-        SELECT
-        GROUP_EXPENSE_ID,
-        GRP_ID,
-        PAID_BY,
-        AMOUNT,
-        DESCRIPTION
-
-        FROM GROUP_EXPENSES
-
-        WHERE GRP_ID=:1
-
-        ORDER BY GROUP_EXPENSE_ID
-        `,
-        [groupId],
-        {
-            outFormat:
-            oracledb.OUT_FORMAT_OBJECT
-        }
-        );
-        return res.status(200).json({
-
-            page,limit,expenses:result.rows
-
-    });
-    }catch(error){
-
-        next(error);
-    }finally{
-
-        if(connection){
-
-            await connection.close();
-
-        }
-
-    }
-
-}
-async function getGroupMembers(req,res,next){
-
-    let connection;
-
-    try{
-
-        const groupId =
-        req.params.groupId;
-
-        connection =
-        await connectDB();
-        const memberCheck = await connection.execute(
-            `SELECT 1 FROM GROUP_MEMBERS 
-             WHERE GRP_ID=:1 AND USER_ID=:2`,
-            [groupId, req.user.user_id],
-            { outFormat: oracledb.OUT_FORMAT_OBJECT }
-        );
-
-        if (memberCheck.rows.length === 0) {
-            return res.status(403).json({ 
-                message: "Access denied. You are not a member of this group" });
-        }
-
-        const result =
-        await connection.execute(
-
-        `
-        SELECT
-        GROUP_MEMBER_ID,
-        GRP_ID,
-        USER_ID
-
-        FROM GROUP_MEMBERS
-
-        WHERE GRP_ID=:1
-        `,
-
-        [groupId],
-
-        {
-            outFormat:
-            oracledb.OUT_FORMAT_OBJECT
-        }
-
-        );
-
-        return res.status(200).json(
-
-            result.rows
-
-        );
-
-    }catch(error){
-
-        next(error);
-
-    }finally{
-
-        if(connection){
-
-            await connection.close();
-
-        }
-
-    }
-
-}
-async function settleGroup(req,res,next){
-
-    let connection;
-
-    try{
-
-        const groupId =
-        req.params.groupId;
-
-        connection =
-        await connectDB();
-        const memberCheck = await connection.execute(
-            `SELECT 1 FROM GROUP_MEMBERS 
-             WHERE GRP_ID=:1 AND USER_ID=:2`,
-            [groupId, req.user.user_id],
-            { outFormat: oracledb.OUT_FORMAT_OBJECT }
-        );
-
-        if (memberCheck.rows.length === 0) {
-            return res.status(403).json({ 
-                message: "Access denied. You are not a member of this group" });
-        }
-
-
-
-        // GET MEMBERS
-
-        const memberResult =
-        await connection.execute(
-
-        `
-        SELECT USER_ID
-        FROM GROUP_MEMBERS
-
-        WHERE GRP_ID=:1
-        `,
-
-        [groupId],
-
-        {
-            outFormat:
-            oracledb.OUT_FORMAT_OBJECT
-        }
-
-        );
-
-
-
-        // GET EXPENSES
-
-        const expenseResult =
-        await connection.execute(
-
-        `
-        SELECT
-        PAID_BY,
-        AMOUNT
-
-        FROM GROUP_EXPENSES
-
-        WHERE GRP_ID=:1
-        `,
-
-        [groupId],
-
-        {
-            outFormat:
-            oracledb.OUT_FORMAT_OBJECT
-        }
-
-        );
-
-
-
-        const members =
-        memberResult.rows;
-
-        const expenses =
-        expenseResult.rows;
-
-
-
-        const totalMembers =
-        members.length;
-
-
-
-        let totalExpense = 0;
-
-        const paidMap = {};
-
-
-
-        for(const expense of expenses){
-
-            totalExpense +=
-            expense.AMOUNT;
-
-            if(!paidMap[
-                expense.PAID_BY
-            ]){
-
-                paidMap[
-                expense.PAID_BY
-                ] = 0;
-
-            }
-
-            paidMap[
-            expense.PAID_BY
-            ] += expense.AMOUNT;
-
-        }
-
-
-
-        const perPerson =
-        totalExpense / totalMembers;
-
-
-
-        const settlement = [];
-
-
-
-        for(const member of members){
-
-            const userId =
-            member.USER_ID;
-
-            const paid =
-            paidMap[userId] || 0;
-
-            const balance =
-            paid - perPerson;
-
-            settlement.push({
-
-                user_id:userId,
-                paid,
-                should_pay:perPerson,
-                balance
-
-            });
-
-        }
-
-
-
-        return res.status(200).json({
-
-            totalExpense,
-            perPerson,
-            settlement
-
-        });
-
-    }catch(error){
-
-    next(error);
-    }finally{
-
-        if(connection){
-
-            await connection.close();
-
-        }
-
-    }
-
-}
 async function joinGroupByCode(req, res, next) {
     let connection;
     try {
@@ -604,16 +316,14 @@ async function joinGroupByCode(req, res, next) {
         const user_id = req.user.user_id;
 
         if (!invite_code) {
-            return res.status(400).json({ message: "Invite code required" });
+            return res.status(400).json({ message: "Invite code is required" });
         }
 
         connection = await connectDB();
 
-        // FIND GROUP BY INVITE CODE
         const groupResult = await connection.execute(
-            `SELECT GRP_ID FROM GROUPS_TABLE 
-             WHERE INVITE_CODE=:1`,
-            [invite_code],
+            `SELECT GRP_ID FROM GROUPS_TABLE WHERE INVITE_CODE=:1`,
+            [invite_code.toUpperCase().trim()],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
 
@@ -623,27 +333,23 @@ async function joinGroupByCode(req, res, next) {
 
         const group_id = groupResult.rows[0].GRP_ID;
 
-        // CHECK IF ALREADY A MEMBER
         const dupCheck = await connection.execute(
-            `SELECT 1 FROM GROUP_MEMBERS 
-             WHERE GRP_ID=:1 AND USER_ID=:2`,
+            `SELECT 1 FROM GROUP_MEMBERS WHERE GRP_ID=:1 AND USER_ID=:2`,
             [group_id, user_id],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
 
         if (dupCheck.rows.length > 0) {
-            return res.status(409).json({ message: "Already a member of this group" });
+            return res.status(409).json({ message: "You are already a member of this group" });
         }
 
-        // ADD USER TO GROUP
         await connection.execute(
-            `INSERT INTO GROUP_MEMBERS (GRP_ID, USER_ID)
-             VALUES (:1, :2)`,
+            `INSERT INTO GROUP_MEMBERS (GRP_ID, USER_ID) VALUES (:1, :2)`,
             [group_id, user_id],
             { autoCommit: true }
         );
 
-        return res.status(201).json({ message: "Joined group successfully" });
+        return res.status(201).json({ message: "Joined group successfully", group_id });
 
     } catch (error) {
         next(error);
@@ -651,6 +357,7 @@ async function joinGroupByCode(req, res, next) {
         if (connection) await connection.close();
     }
 }
+
 async function markMemberSettled(req, res, next) {
     let connection;
     try {
@@ -659,7 +366,6 @@ async function markMemberSettled(req, res, next) {
 
         connection = await connectDB();
 
-        // CHECK IF REQUESTER IS ADMIN
         const adminCheck = await connection.execute(
             `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRP_ID=:1`,
             [groupId],
@@ -674,11 +380,8 @@ async function markMemberSettled(req, res, next) {
             return res.status(403).json({ message: "Only admin can mark members as settled" });
         }
 
-        // MARK AS SETTLED
         await connection.execute(
-            `UPDATE GROUP_MEMBERS 
-             SET SETTLED=1 
-             WHERE GRP_ID=:1 AND USER_ID=:2`,
+            `UPDATE GROUP_MEMBERS SET SETTLED=1 WHERE GRP_ID=:1 AND USER_ID=:2`,
             [groupId, userId],
             { autoCommit: true }
         );
@@ -691,6 +394,7 @@ async function markMemberSettled(req, res, next) {
         if (connection) await connection.close();
     }
 }
+
 async function leaveGroup(req, res, next) {
     let connection;
     try {
@@ -699,21 +403,18 @@ async function leaveGroup(req, res, next) {
 
         connection = await connectDB();
 
-        // CHECK IF ADMIN — admin cannot leave
         const adminCheck = await connection.execute(
             `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRP_ID=:1`,
             [groupId],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
 
-        if (adminCheck.rows[0].CREATED_BY === user_id) {
-            return res.status(403).json({ message: "Admin cannot leave. Delete the group instead" });
+        if (adminCheck.rows.length > 0 && adminCheck.rows[0].CREATED_BY === user_id) {
+            return res.status(403).json({ message: "Group admin cannot leave. Delete the group instead" });
         }
 
-        // REMOVE FROM GROUP
         await connection.execute(
-            `DELETE FROM GROUP_MEMBERS 
-             WHERE GRP_ID=:1 AND USER_ID=:2`,
+            `DELETE FROM GROUP_MEMBERS WHERE GRP_ID=:1 AND USER_ID=:2`,
             [groupId, user_id],
             { autoCommit: true }
         );
@@ -726,6 +427,7 @@ async function leaveGroup(req, res, next) {
         if (connection) await connection.close();
     }
 }
+
 async function deleteGroup(req, res, next) {
     let connection;
     try {
@@ -734,7 +436,6 @@ async function deleteGroup(req, res, next) {
 
         connection = await connectDB();
 
-        // CHECK IF ADMIN
         const adminCheck = await connection.execute(
             `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRP_ID=:1`,
             [groupId],
@@ -746,26 +447,12 @@ async function deleteGroup(req, res, next) {
         }
 
         if (adminCheck.rows[0].CREATED_BY !== admin_id) {
-            return res.status(403).json({ message: "Only admin can delete the group" });
+            return res.status(403).json({ message: "Only group admin can delete the group" });
         }
 
-        // DELETE CHILD TABLES FIRST
-        await connection.execute(
-            `DELETE FROM GROUP_EXPENSES WHERE GRP_ID=:1`,
-            [groupId]
-        );
-
-        await connection.execute(
-            `DELETE FROM GROUP_MEMBERS WHERE GRP_ID=:1`,
-            [groupId]
-        );
-
-        // DELETE GROUP
-        await connection.execute(
-            `DELETE FROM GROUPS_TABLE WHERE GRP_ID=:1`,
-            [groupId],
-            { autoCommit: true }
-        );
+        await connection.execute(`DELETE FROM GROUP_EXPENSES WHERE GRP_ID=:1`, [groupId]);
+        await connection.execute(`DELETE FROM GROUP_MEMBERS WHERE GRP_ID=:1`, [groupId]);
+        await connection.execute(`DELETE FROM GROUPS_TABLE WHERE GRP_ID=:1`, [groupId], { autoCommit: true });
 
         return res.status(200).json({ message: "Group deleted successfully" });
 
@@ -775,15 +462,25 @@ async function deleteGroup(req, res, next) {
         if (connection) await connection.close();
     }
 }
+
 async function generateQR(req, res, next) {
     let connection;
     try {
         const { groupId, userId } = req.params;
-        const admin_id = req.user.user_id;
+        const requester_id = req.user.user_id;
 
         connection = await connectDB();
 
-        // CHECK IF REQUESTER IS ADMIN
+        const memberCheck = await connection.execute(
+            `SELECT 1 FROM GROUP_MEMBERS WHERE GRP_ID=:1 AND USER_ID=:2`,
+            [groupId, requester_id],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        if (memberCheck.rows.length === 0) {
+            return res.status(403).json({ message: "Access denied. You are not a member of this group" });
+        }
+
         const adminCheck = await connection.execute(
             `SELECT CREATED_BY FROM GROUPS_TABLE WHERE GRP_ID=:1`,
             [groupId],
@@ -794,66 +491,59 @@ async function generateQR(req, res, next) {
             return res.status(404).json({ message: "Group not found" });
         }
 
-        if (adminCheck.rows[0].CREATED_BY !== admin_id) {
-            return res.status(403).json({ message: "Only admin can generate QR" });
-        }
+        const admin_id = adminCheck.rows[0].CREATED_BY;
 
-        // GET ADMIN UPI ID
         const adminResult = await connection.execute(
             `SELECT USERNAME, UPI_ID FROM USERS WHERE USER_ID=:1`,
             [admin_id],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
 
-        const adminUPI = adminResult.rows[0].UPI_ID;
-        const adminName = adminResult.rows[0].USERNAME;
+        const adminUPI = adminResult.rows[0]?.UPI_ID;
+        const adminName = adminResult.rows[0]?.USERNAME;
 
         if (!adminUPI) {
-            return res.status(400).json({ message: "Admin has no UPI ID set. Update profile first" });
+            return res.status(400).json({ message: "Group admin has no UPI ID configured in their profile" });
         }
 
-        // GET TOTAL GROUP EXPENSE
         const totalResult = await connection.execute(
             `SELECT SUM(AMOUNT) AS TOTAL FROM GROUP_EXPENSES WHERE GRP_ID=:1`,
             [groupId],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
 
-        // GET MEMBER COUNT
         const memberResult = await connection.execute(
             `SELECT COUNT(*) AS TOTAL_MEMBERS FROM GROUP_MEMBERS WHERE GRP_ID=:1`,
             [groupId],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
 
-        // GET HOW MUCH THIS USER PAID
         const paidResult = await connection.execute(
-            `SELECT SUM(AMOUNT) AS PAID FROM GROUP_EXPENSES 
-             WHERE GRP_ID=:1 AND PAID_BY=:2`,
+            `SELECT SUM(AMOUNT) AS PAID FROM GROUP_EXPENSES WHERE GRP_ID=:1 AND PAID_BY=:2`,
             [groupId, userId],
             { outFormat: oracledb.OUT_FORMAT_OBJECT }
         );
 
-        const total = totalResult.rows[0].TOTAL || 0;
-        const members = memberResult.rows[0].TOTAL_MEMBERS || 1;
-        const paid = paidResult.rows[0].PAID || 0;
+        const total = totalResult.rows[0]?.TOTAL || 0;
+        const members = memberResult.rows[0]?.TOTAL_MEMBERS || 1;
+        const paid = paidResult.rows[0]?.PAID || 0;
         const perPerson = total / members;
         const amountOwed = perPerson - paid;
 
         if (amountOwed <= 0) {
-            return res.status(200).json({ message: "This user owes nothing" });
+            return res.status(200).json({ message: "This member owes no remaining balance", amount_owed: "0.00" });
         }
 
-        // GENERATE UPI URL
-        const upiUrl = `upi://pay?pa=${adminUPI}&pn=${adminName}&am=${amountOwed.toFixed(2)}&cu=INR&tn=Group Expense Settlement`;
+        const upiUrl = `upi://pay?pa=${encodeURIComponent(adminUPI)}&pn=${encodeURIComponent(adminName)}&am=${amountOwed.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Group Settlement')}`;
 
-        // GENERATE QR
         const QRCode = require("qrcode");
         const qrImage = await QRCode.toDataURL(upiUrl);
 
         return res.status(200).json({
-            message: "QR generated successfully",
+            message: "UPI QR generated successfully",
             amount_owed: amountOwed.toFixed(2),
+            admin_upi: adminUPI,
+            admin_name: adminName,
             qr: qrImage
         });
 
@@ -863,9 +553,10 @@ async function generateQR(req, res, next) {
         if (connection) await connection.close();
     }
 }
-module.exports={
 
+module.exports = {
     createGroup,
+    getUserGroups,
     addUserToGroup,
     createGroupExpense,
     getGroupExpenses,
@@ -876,5 +567,4 @@ module.exports={
     leaveGroup,
     deleteGroup,
     generateQR
-
 };

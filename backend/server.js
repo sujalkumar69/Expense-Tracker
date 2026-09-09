@@ -7,8 +7,10 @@ const rateLimit = require("express-rate-limit");
 const userRoutes = require("./routes/userRoutes.js");
 const expenseRoutes = require("./routes/expenseRoutes.js");
 const groupRoutes = require("./routes/groupRoutes.js");
+const cors = require("cors");
 const app = express();
 
+app.use(cors());
 app.use(express.json());
 app.use(helmet());
 app.use(morgan("dev"));

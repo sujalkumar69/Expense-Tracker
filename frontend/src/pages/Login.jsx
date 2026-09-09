@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import API from "../api/axios";
@@ -13,231 +12,108 @@ export default function Login() {
     const { login } = useAuth();
     const navigate = useNavigate();
 
-    const handleLogin = async () => {
+    const handleLogin = async (e) => {
+        if (e) e.preventDefault();
         setError("");
+
+        if (!email || !password) {
+            setError("Email and password are required.");
+            return;
+        }
+
         setLoading(true);
         try {
             const res = await API.post("/users/login", { email, password });
-            login(res.data.accessToken, res.data.refreshToken);
+            await login(res.data.accessToken, res.data.refreshToken);
             navigate("/dashboard");
         } catch (err) {
-            setError(err.response?.data?.message || "Login failed");
+            setError(err.response?.data?.message || "Login failed. Please check your credentials.");
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div style={{
-            minHeight: "100vh",
-            position: "relative",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontFamily: "'Segoe UI', sans-serif",
-            overflow: "hidden"
-        }}>
-
-            {/* VIDEO BACKGROUND */}
-            <video
-                autoPlay
-                loop
-                muted
-                playsInline
-                onLoadedData={() =>console.log("Video loaded")}
-                style={{
-                    position: "fixed",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    zIndex: 0
-                }}
-            >
-                <source src="/money-bd.mp4/video.mp4" type="video/mp4" />
-            </video>
-
-            {/* DARK OVERLAY */}
-            <div style={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                width: "100%",
-                height: "100%",
-                background: "rgba(0,0,0,0.6)",
-                zIndex: 1
-            }} />
-
-            {/* LOGIN CARD */}
-            <motion.div
-                initial={{ opacity: 0, y: 40 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-                style={{
-                    width: "100%",
-                    maxWidth: "420px",
-                    margin: "20px",
-                    padding: "40px",
-                    borderRadius: "24px",
-                    background: "rgba(255,255,255,0.07)",
-                    border: "1px solid rgba(0,255,136,0.2)",
-                    boxShadow: "0 0 60px rgba(0,255,136,0.05), inset 0 0 60px rgba(255,255,255,0.02)",
-                    backdropFilter: "blur(20px)",
-                    WebkitBackdropFilter: "blur(20px)",
-                    zIndex: 10,
-                    position: "relative"
-                }}
-            >
-                {/* HEADER */}
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                    style={{ textAlign: "center", marginBottom: "32px" }}
-                >
-                    <div style={{ fontSize: "48px", marginBottom: "8px" }}>🤑</div>
-                    <h1 style={{
-                        fontSize: "28px",
-                        fontWeight: 800,
-                        background: "linear-gradient(90deg, #ffd700, #00ff88)",
-                        WebkitBackgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
-                        margin: 0
-                    }}>
-                        Welcome Back
-                    </h1>
-                    <p style={{
-                        color: "rgba(255,255,255,0.4)",
-                        marginTop: "8px",
-                        fontSize: "14px"
-                    }}>
-                        Sign in to track your expenses
-                    </p>
-                </motion.div>
-
-                {/* ERROR */}
-                {error && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        style={{
-                            background: "rgba(255,50,50,0.1)",
-                            border: "1px solid rgba(255,50,50,0.3)",
-                            borderRadius: "12px",
-                            padding: "12px 16px",
-                            color: "#00ff88",
-                            fontSize: "14px",
-                            marginBottom: "20px"
-                        }}
-                    >
-                        {error}
-                    </motion.div>
-                )}
-
-                {/* EMAIL INPUT */}
-                <div style={{ marginBottom: "16px" }}>
-                    <label style={{
-                        color: "rgba(255,255,255,0.5)",
-                        fontSize: "13px",
-                        display: "block",
-                        marginBottom: "8px"
-                    }}>
-                        Email
-                    </label>
-                    <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="you@example.com"
-                        style={{
-                            width: "100%",
-                            padding: "14px 16px",
-                            borderRadius: "12px",
-                            border: "1px solid rgba(255,255,255,0.1)",
-                            background: "rgba(255,255,255,0.05)",
-                            color: "#fff",
-                            fontSize: "15px",
-                            outline: "none",
-                            boxSizing: "border-box"
-                        }}
-                        onFocus={(e) => e.target.style.border = "1px solid #ffd700"}
-                        onBlur={(e) => e.target.style.border = "1px solid rgba(255,255,255,0.1)"}
-                    />
+        <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 text-slate-100 font-sans">
+            <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
+                <div className="mx-auto w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
                 </div>
-
-                {/* PASSWORD INPUT */}
-                <div style={{ marginBottom: "24px" }}>
-                    <label style={{
-                        color: "rgba(255,255,255,0.5)",
-                        fontSize: "13px",
-                        display: "block",
-                        marginBottom: "8px"
-                    }}>
-                        Password
-                    </label>
-                    <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        style={{
-                            width: "100%",
-                            padding: "14px 16px",
-                            borderRadius: "12px",
-                            border: "1px solid rgba(255,255,255,0.1)",
-                            background: "rgba(255,255,255,0.05)",
-                            color: "#fff",
-                            fontSize: "15px",
-                            outline: "none",
-                            boxSizing: "border-box"
-                        }}
-                        onFocus={(e) => e.target.style.border = "1px solid #ffd700"}
-                        onBlur={(e) => e.target.style.border = "1px solid rgba(255,255,255,0.1)"}
-                        onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                    />
-                </div>
-
-                {/* LOGIN BUTTON */}
-                <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleLogin}
-                    disabled={loading}
-                    style={{
-                        width: "100%",
-                        padding: "15px",
-                        borderRadius: "12px",
-                        border: "none",
-                        background: loading
-                            ? "rgba(0,255,136,0.4)"
-                            : "linear-gradient(90deg, #ffd700, #00ff88)",
-                        color: "#000",
-                        fontSize: "16px",
-                        fontWeight: 700,
-                        cursor: loading ? "not-allowed" : "pointer",
-                    }}
-                >
-                    {loading ? "Signing in..." : "Sign In 🚀"}
-                </motion.button>
-
-                {/* REGISTER LINK */}
-                <p style={{
-                    textAlign: "center",
-                    marginTop: "24px",
-                    color: "rgba(255,255,255,0.4)",
-                    fontSize: "14px"
-                }}>
-                    Don't have an account?{" "}
-                    <Link to="/register" style={{
-                        color: "#00ff88",
-                        textDecoration: "none",
-                        fontWeight: 600
-                    }}>
-                        Register here
-                    </Link>
+                <h2 className="mt-4 text-2xl font-bold tracking-tight text-white">
+                    Sign in to ExpenseTracker
+                </h2>
+                <p className="mt-2 text-sm text-slate-400">
+                    Manage your personal and group expenses securely
                 </p>
-            </motion.div>
+            </div>
+
+            <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+                <div className="bg-slate-900 py-8 px-4 shadow-xl border border-slate-800 sm:rounded-xl sm:px-10">
+                    {error && (
+                        <div className="mb-4 bg-rose-500/10 border border-rose-500/20 rounded-lg p-3 text-sm text-rose-400 flex items-start space-x-2">
+                            <svg className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span>{error}</span>
+                        </div>
+                    )}
+
+                    <form className="space-y-6" onSubmit={handleLogin}>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-300">
+                                Email address
+                            </label>
+                            <div className="mt-1">
+                                <input
+                                    type="email"
+                                    required
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="you@example.com"
+                                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-sm"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-300">
+                                Password
+                            </label>
+                            <div className="mt-1">
+                                <input
+                                    type="password"
+                                    required
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="••••••••"
+                                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-sm"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-slate-950 bg-emerald-400 hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                {loading ? "Signing in..." : "Sign In"}
+                            </button>
+                        </div>
+                    </form>
+
+                    <div className="mt-6 text-center">
+                        <p className="text-sm text-slate-400">
+                            Don't have an account?{" "}
+                            <Link to="/register" className="font-medium text-emerald-400 hover:text-emerald-300">
+                                Register here
+                            </Link>
+                        </p>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }
